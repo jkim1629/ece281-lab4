@@ -26,13 +26,15 @@ architecture top_basys3_arch of top_basys3 is
 
     -- signal declarations
     signal w_clk : std_logic;
-    signal w_floor: std_logic_vector(3 downto 0);
-    signal w_floor_digit : std_logic_vector(3 downto 0);
-    signal w_tdm_data : std_logic_vector(3 downto 0);
-    signal w_tdm_sel: std_logic_vector(3 downto 0);
+    signal w_display_clk : std_logic;
+    signal w_floor0: std_logic_vector(3 downto 0);
     signal w_master_reset : std_logic;
     signal w_clk_reset : std_logic;
     signal w_fsm_reset : std_logic;
+    
+    signal w_floor1 : std_logic_vector(3 downto 0);
+    signal w_tdm_data : std_logic_vector(3 downto 0);
+    signal w_tdm_sel : std_logic_vector(3 downto 0);
   
 	-- component declarations
     component sevenseg_decoder is
@@ -51,19 +53,22 @@ architecture top_basys3_arch of top_basys3 is
             o_floor : out STD_LOGIC_VECTOR (3 downto 0)		   
 		 );
 	end component elevator_controller_fsm;
-	
-	component TDM4 is
-		generic ( constant k_WIDTH : natural  := 4); -- bits in input and output
-        Port ( i_clk		: in  STD_LOGIC;
-           i_reset		: in  STD_LOGIC; -- asynchronous
-           i_D3 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
-		   i_D2 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
-		   i_D1 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
-		   i_D0 		: in  STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
-		   o_data		: out STD_LOGIC_VECTOR (k_WIDTH - 1 downto 0);
-		   o_sel		: out STD_LOGIC_VECTOR (3 downto 0)	-- selected data line (one-cold)
-	   );
-    end component TDM4;
+
+    component TDM4 is
+    generic (
+    constant k_WIDTH : natural := 4
+    );
+    port (
+    i_clk : in std_logic;
+    i_reset : in std_logic;
+    i_D3 : in std_logic_vector(k_WIDTH -1 downto 0);
+    i_D2 : in std_logic_vector(k_WIDTH -1 downto 0);
+    i_D1 : in std_logic_vector(k_WIDTH -1 downto 0);
+    i_D0 : in std_logic_vector(k_WIDTH -1 downto 0);
+    o_data : out std_logic_vector(k_WIDTH -1 downto 0);
+    o_sel : out std_logic_vector(3 downto 0)
+    );
+    end component;
      
 	component clock_divider is
         generic ( constant k_DIV : natural := 2	); -- How many clk cycles until slow clock toggles
@@ -83,36 +88,51 @@ begin
 	
 	-- CONCURRENT STATEMENTS ----------------------------
 	clkdiv_inst : clock_divider
-	generic map ( k_DIV => 50000000 ) -- 1 Hz clock from 100 MHz
+	generic map ( k_DIV => 25000000 ) -- 1 Hz clock from 100 MHz
         port map (						  
             i_clk   => clk,
             i_reset => w_clk_reset,
             o_clk   => w_clk
         );   
-        
-    elevator_inst : elevator_controller_fsm
+    
+    clkdiv_display_inst : clock_divider
+    generic map (
+    k_DIV => 50000
+    )
+    port map (
+    i_clk => clk,
+    i_reset => w_master_reset,
+    o_clk => w_display_clk
+    );
+    elevator0_inst : elevator_controller_fsm
         port map (
         i_clk => w_clk,
         i_reset => w_fsm_reset,
         is_stopped => sw(0),
         go_up_down => sw(1),
-        o_floor => w_floor
+        o_floor => w_floor0
         );
         
-      
-        w_floor_digit <= w_floor;
+     elevator1_inst : elevator_controller_fsm
+        port map (
+        i_clk => w_clk,
+        i_reset => w_fsm_reset,
+        is_stopped => sw(14),
+        go_up_down => sw(15),
+        o_floor => w_floor1
+        );
         
        tdm_inst : TDM4
-       generic map (
+       generic map(
        k_WIDTH => 4
        )
        port map (
-       i_clk => clk,
+       i_clk => w_display_clk,
        i_reset => w_master_reset,
-       i_D3 => w_floor_digit,
-       i_D2 => w_floor_digit,
-       i_D1 => w_floor_digit,
-       i_D0 => w_floor_digit,
+       i_D3 => x"F",
+       i_D2 => w_floor1,
+       i_D1 => x"F",
+       i_D0 => w_floor0,
        o_data => w_tdm_data,
        o_sel => w_tdm_sel
        );
@@ -127,8 +147,10 @@ begin
 	-- LED 15 gets the FSM slow clock signal. The rest are grounded.
 	led(15) <= w_clk;
 	-- leave unused switches UNCONNECTED. Ignore any warnings this causes.
-	led(14 downto 4) <= (others => '0');
-	led(3 downto 0) <= w_floor;
+	led(14 downto 12) <= (others => '0');
+	led(11 downto 8) <= w_floor1;
+	led(7 downto 4) <= (others => '0');
+	led(3 downto 0) <= w_floor0;
 	-- reset signals
 	
 end top_basys3_arch;
